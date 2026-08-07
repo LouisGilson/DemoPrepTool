@@ -1,0 +1,582 @@
+import { useState } from "react";
+
+const PRODUCTS = ["Autotask", "IT Glue", "Kaseya Quote Manager"];
+
+const DISCOVERY_FIELDS = {
+  Autotask: [
+    { key: "currentPSA", label: "Current PSA", placeholder: "e.g. ConnectWise, Halo, ServiceNow, spreadsheets..." },
+    { key: "ticketVolume", label: "Daily ticket volume", placeholder: "e.g. 50–100 tickets/day, mostly system-generated" },
+    { key: "biggestPain", label: "Biggest pain point", placeholder: "e.g. manual billing, tickets falling through the cracks..." },
+    { key: "billingSetup", label: "Billing / contract setup", placeholder: "e.g. MSA-heavy, T&M, mixed – using Xero/QuickBooks..." },
+    { key: "accountingSoftware", label: "Accounting software", placeholder: "e.g. Xero, QuickBooks Online, MYOB..." },
+    { key: "aiAppetite", label: "AI / automation appetite", placeholder: "e.g. very keen on automation, sceptical of AI, neutral..." },
+    { key: "rmmTool", label: "RMM tool & integration status", placeholder: "e.g. Datto RMM already in use, NinjaRMM contract up soon..." },
+    { key: "itglueTool", label: "Documentation tool", placeholder: "e.g. IT Glue already in use, Hudu, SharePoint, nothing..." },
+    { key: "contractTypes", label: "Contract types", placeholder: "e.g. mostly MSA, some T&M, per-device billing..." },
+    { key: "desiredOutcome", label: "Desired outcome", placeholder: "e.g. growth, efficiency, better visibility, less manual billing..." },
+    { key: "teamSize", label: "Team size / structure", placeholder: "e.g. 5 techs, 2 tiers, one dispatcher..." },
+    { key: "extraNotes", label: "Anything else worth noting", placeholder: "e.g. evaluating Halo side-by-side, finance team will be on call..." },
+  ],
+  "IT Glue": [
+    { key: "currentDocTool", label: "Current documentation tool", placeholder: "e.g. Hudu, SharePoint, Word docs, nothing..." },
+    { key: "passwordMgmt", label: "Password management approach", placeholder: "e.g. LastPass, shared spreadsheet, nothing centralised..." },
+    { key: "documentationMaturity", label: "Documentation maturity", placeholder: "e.g. very ad hoc, some structure, well documented..." },
+    { key: "complianceNeeds", label: "Compliance / audit requirements", placeholder: "e.g. SOC 2, ISO 27001, nothing formal..." },
+    { key: "rmmTool", label: "RMM tool", placeholder: "e.g. Datto RMM, NinjaRMM, Kaseya VSA..." },
+    { key: "m365Usage", label: "M365 usage", placeholder: "e.g. full M365 tenant per client, some hybrid, on-prem..." },
+    { key: "autotaskUsage", label: "PSA / Autotask usage", placeholder: "e.g. already on Autotask, evaluating it, using ConnectWise..." },
+    { key: "securityFocus", label: "Security / cyber focus", placeholder: "e.g. strong focus on cyber, basic awareness, sells cyber services..." },
+    { key: "clientSize", label: "Typical client size", placeholder: "e.g. SMBs under 50 users, some enterprise, varied..." },
+    { key: "biggestPain", label: "Biggest documentation pain", placeholder: "e.g. stale docs, no central place, techs don't document..." },
+    { key: "extraNotes", label: "Anything else worth noting", placeholder: "e.g. wants MyGlue for clients, interested in Network Glue..." },
+  ],
+  "Kaseya Quote Manager": [
+    { key: "currentQuotingTool", label: "Current quoting tool", placeholder: "e.g. Xero quotes, Word docs, ConnectWise Sell, Quoter..." },
+    { key: "suppliers", label: "Main suppliers / distributors", placeholder: "e.g. Dicker Data, Ingram Micro, Leader Computers, direct..." },
+    { key: "quoteVolume", label: "Quote frequency", placeholder: "e.g. 5–10 quotes/week, mostly hardware, large project quotes..." },
+    { key: "psaIntegration", label: "PSA in use", placeholder: "e.g. Autotask, ConnectWise, none..." },
+    { key: "xeroUsage", label: "Accounting software", placeholder: "e.g. Xero, QuickBooks, MYOB..." },
+    { key: "approvalProcess", label: "Internal approval process", placeholder: "e.g. manager approves all quotes over $X, no process, informal..." },
+    { key: "recurringServices", label: "Recurring services on quotes", placeholder: "e.g. always adds AV licensing, sometimes managed services..." },
+    { key: "biggestPain", label: "Biggest quoting pain", placeholder: "e.g. stock availability unknown, manual margin calcs, slow to send..." },
+    { key: "extraNotes", label: "Anything else worth noting", placeholder: "e.g. new to quoting tools, wants Stripe payments, multi-entity..." },
+  ],
+};
+
+const SYSTEM_PROMPTS = {
+  Autotask: `You are a sales engineer assistant helping prep a demo of Autotask PSA (by Kaseya).
+
+The presenter's demo flow covers these sections IN ORDER:
+1. Opening/Discovery & Platform Positioning
+2. Dashboards & Visibility (K1 login, pre-built dashboards, SDM dashboard, widgets, SLA visibility)
+3. Ticket Views (Board & Grid – drag/drop, visual triage)
+4. Scheduling / Resource Planner (AI Ticket Triage, Workforce Management, Outlook sync)
+5. Ticket Deep Dive (AI features: summaries, triage, smart resolution; Left panel; Workflow Rules; Main body: category, SLA timeline, checklists, activity feed, charges/expenses, service calls, change info, approvals)
+6. Integrations (Datto RMM in-ticket device status + remote session launch; IT Glue checklists/passwords/assets in-ticket)
+7. Time Entry & Billing (stopwatch, time entry window, work type exclusions, AI note cleanup, quick notifications)
+8. Contracts & Invoicing (contract types, profitability, ICB/integrated customer billing, exclusions, audit trail, approve/post workflow, invoicing, accounting sync)
+9. Reporting & Data
+10. Client Portal (structured request capture, permissions, service request types)
+11. Close
+
+Based on the client discovery information provided, return a JSON object with this exact structure:
+{
+  "headline": "One sentence summary of who this client is and what matters most to them",
+  "focusAreas": [
+    {
+      "section": "exact section name from the flow above",
+      "priority": "HIGH" | "MEDIUM" | "LOW",
+      "talkingPoints": ["specific talking point 1", "specific talking point 2"],
+      "whyItMatters": "one sentence tying this to what the client told you"
+    }
+  ],
+  "watchOut": ["any traps, objections, or things to be careful about"],
+  "openingAngle": "Suggested personalised opening line or framing for the discovery/intro based on their context"
+}
+
+Only include sections that are relevant. HIGH = lean into this section, spend more time. MEDIUM = cover it well but don't over-dwell. LOW = touch briefly or skip if time is short. Be specific and practical, not generic.`,
+
+  "IT Glue": `You are a sales engineer assistant helping prep a demo of IT Glue (by Kaseya).
+
+The presenter's demo flow covers these sections IN ORDER:
+1. Opening questions (definition of documentation, current password mgmt)
+2. Welcome Dashboard & Activity Log (audit trail, who viewed/changed what)
+3. Admin: Integrations overview & Role-based permissions / security groups
+4. Organisation view (dashboard, core vs flexible assets overview)
+5. Checklists (templates, relate to any record, used in Autotask)
+6. Configurations (auto-populated by RMM, device records, related items/AI Smart Relate, revisions, per-config security)
+7. Contacts & M365 integration (auto-sync users, licence visibility)
+8. Documents (knowledge base, folder structure, file attachments, expiry dates, flag system, MyGlue client portal)
+9. Browser Extension (SOP Generator, search, password access)
+10. Domain Tracker & SSL Tracker (expiry monitoring, WHOIS, auto-alerts)
+11. Locations
+12. Networks / Network Glue (auto network documentation, required for password rotation)
+13. Passwords (secure vault, OTP support, Safe Share, password rotation)
+14. Flexible Assets (customisable templates, out-of-box options, build-your-own)
+15. Workflows (automation engine: triggers, filters, actions – notifications, webhooks)
+16. Global view & Reports (cross-org search, Passwords at Risk)
+17. Kaseya AI (Kaseya Assist, Smart Audit for passwords & documents)
+18. Close
+
+Based on the client discovery information provided, return a JSON object with this exact structure:
+{
+  "headline": "One sentence summary of who this client is and what matters most to them",
+  "focusAreas": [
+    {
+      "section": "exact section name from the flow above",
+      "priority": "HIGH" | "MEDIUM" | "LOW",
+      "talkingPoints": ["specific talking point 1", "specific talking point 2"],
+      "whyItMatters": "one sentence tying this to what the client told you"
+    }
+  ],
+  "watchOut": ["any traps, objections, or things to be careful about"],
+  "openingAngle": "Suggested personalised opening line or framing for the opening questions based on their context"
+}
+
+Only include sections that are relevant. HIGH = lean into this section, spend more time. MEDIUM = cover it well but don't over-dwell. LOW = touch briefly or skip if time is short. Be specific and practical, not generic.`,
+
+  "Kaseya Quote Manager": `You are a sales engineer assistant helping prep a demo of Kaseya Quote Manager (KQM).
+
+The presenter's demo flow covers these sections IN ORDER:
+1. Supplier Integrations (Dicker Data, Ingram Micro, Leader, custom CSV feed)
+2. Storefront (combined supplier catalogue, categories, filters, stock visibility, accessories)
+3. Quotes overview & templates (out-of-box templates, custom templates)
+4. Quote builder: Notifications & reminders (send reminders, expiry date warnings)
+5. Quote builder: Organisation & recipient (PSA-sync, auto-populated clients)
+6. Quote builder: Opportunity linking
+7. Quote builder: Quote body & sections (customisable sections, product pictures)
+8. Quote builder: Products (add from storefront, margins, discounts, optional items, custom products)
+9. Quote builder: Services (recurring services, licensing, cycle count)
+10. Quote builder: Metrics & approval rules (totals, margin thresholds, new-user approval gates)
+11. Quote builder: Quality-of-life notifications (out-of-stock warnings)
+12. Sending: Email templates (customisable per template, PDF attachment option)
+13. Client view (online quote, optional items, T&Cs, e-signature, payment options: account/Stripe/manual)
+14. Quote analytics (open tracking, view frequency, IP addresses)
+15. Version history
+16. Sales / Sales Orders (auto-created on win, PSA sync)
+17. Purchases & procurement workflow (PO creation, approve, receive, reference number, receipt)
+18. Xero integration (bills sync, PSA sync)
+19. Quote approval rules & margin notifications
+20. Quote reminders configuration
+21. Close
+
+Based on the client discovery information provided, return a JSON object with this exact structure:
+{
+  "headline": "One sentence summary of who this client is and what matters most to them",
+  "focusAreas": [
+    {
+      "section": "exact section name from the flow above",
+      "priority": "HIGH" | "MEDIUM" | "LOW",
+      "talkingPoints": ["specific talking point 1", "specific talking point 2"],
+      "whyItMatters": "one sentence tying this to what the client told you"
+    }
+  ],
+  "watchOut": ["any traps, objections, or things to be careful about"],
+  "openingAngle": "Suggested personalised opening line or framing for the opening of the demo based on their context"
+}
+
+Only include sections that are relevant. HIGH = lean into this section, spend more time. MEDIUM = cover it well but don't over-dwell. LOW = touch briefly or skip if time is short. Be specific and practical, not generic.`,
+};
+
+const PRIORITY_CONFIG = {
+  HIGH: { label: "Focus", color: "#16a34a", bg: "#f0fdf4", border: "#bbf7d0", dot: "#16a34a" },
+  MEDIUM: { label: "Cover", color: "#ca8a04", bg: "#fefce8", border: "#fef08a", dot: "#ca8a04" },
+  LOW: { label: "Light touch", color: "#6b7280", bg: "#f9fafb", border: "#e5e7eb", dot: "#9ca3af" },
+};
+
+export default function DemoPrepTool() {
+  const [step, setStep] = useState("product"); // product | mode | winn | inputs | loading | results
+  const [selectedProduct, setSelectedProduct] = useState(null);
+  const [inputMode, setInputMode] = useState(null); // "winn" | "manual"
+  const [winnSummary, setWinnSummary] = useState("");
+  const [formData, setFormData] = useState({});
+  const [results, setResults] = useState(null);
+  const [error, setError] = useState(null);
+
+  const handleProductSelect = (product) => {
+    setSelectedProduct(product);
+    setFormData({});
+    setWinnSummary("");
+    setInputMode(null);
+    setStep("mode");
+  };
+
+  const handleModeSelect = (mode) => {
+    setInputMode(mode);
+    setStep(mode === "winn" ? "winn" : "inputs");
+  };
+
+  const handleInputChange = (key, value) => {
+    setFormData((prev) => ({ ...prev, [key]: value }));
+  };
+
+  const buildUserMessage = () => {
+    if (inputMode === "winn") {
+      return `Here is the Winn.ai meeting summary from the discovery call with this client:\n\n${winnSummary.trim()}\n\nGive me my demo focus areas.`;
+    }
+    const filledFields = Object.entries(formData)
+      .filter(([, v]) => v && v.trim())
+      .map(([k, v]) => {
+        const field = DISCOVERY_FIELDS[selectedProduct].find((f) => f.key === k);
+        return `${field?.label || k}: ${v.trim()}`;
+      })
+      .join("\n");
+    return `Here is what I discovered about this client:\n\n${filledFields}\n\nGive me my demo focus areas.`;
+  };
+
+  const handleSubmit = async () => {
+    if (inputMode === "winn" && !winnSummary.trim()) {
+      setError("Paste your Winn.ai summary first.");
+      return;
+    }
+    if (inputMode === "manual") {
+      const hasAny = Object.values(formData).some((v) => v && v.trim());
+      if (!hasAny) { setError("Fill in at least one field before generating."); return; }
+    }
+    setError(null);
+    setStep("loading");
+    try {
+      const systemPrompt = SYSTEM_PROMPTS[selectedProduct];
+      const userMsg = buildUserMessage();
+
+      const response = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "anthropic-version": "2023-06-01",
+        },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-6",
+          max_tokens: 4000,
+          system: systemPrompt + "\n\nIMPORTANT: Keep each talkingPoint under 20 words. Keep whyItMatters under 20 words. Keep watchOut items under 20 words. Keep openingAngle under 40 words. Be punchy and direct. The entire JSON response MUST be complete and valid — never truncate.",
+          messages: [{ role: "user", content: userMsg }],
+        }),
+      });
+
+      if (!response.ok) {
+        const errBody = await response.text();
+        throw new Error(`API ${response.status}: ${errBody}`);
+      }
+
+      const data = await response.json();
+      const rawText = (data.content || []).map((b) => b.text || "").join("");
+
+      // Extract JSON robustly — handle ```json fences or raw JSON
+      const jsonMatch = rawText.match(/```json\s*([\s\S]*?)```/) ||
+                        rawText.match(/```\s*([\s\S]*?)```/) ||
+                        rawText.match(/(\{[\s\S]*\})/);
+      const jsonStr = jsonMatch ? jsonMatch[1].trim() : rawText.trim();
+      const parsed = JSON.parse(jsonStr);
+
+      setResults(parsed);
+      setStep("results");
+    } catch (err) {
+      setError(`Error: ${err.message}`);
+      setStep(inputMode === "winn" ? "winn" : "inputs");
+    }
+  };
+
+  const reset = () => {
+    setStep("product");
+    setSelectedProduct(null);
+    setInputMode(null);
+    setFormData({});
+    setWinnSummary("");
+    setResults(null);
+    setError(null);
+  };
+
+  const backToInput = () => {
+    setStep(inputMode === "winn" ? "winn" : "inputs");
+    setResults(null);
+  };
+
+  // ── Shared styles ──────────────────────────────────────────────
+  const card = {
+    background: "#1e293b", border: "1px solid #334155", borderRadius: 10,
+    padding: "18px 20px", marginBottom: 12,
+  };
+
+  const pillBtn = (active) => ({
+    flex: 1, background: active ? "#f97316" : "#1e293b",
+    border: `1px solid ${active ? "#f97316" : "#334155"}`,
+    borderRadius: 8, padding: "12px 0", color: active ? "#fff" : "#94a3b8",
+    fontSize: 14, cursor: "pointer", fontWeight: active ? 600 : 500,
+    transition: "all 0.15s",
+  });
+
+  return (
+    <div style={{ fontFamily: "'Inter', -apple-system, sans-serif", minHeight: "100vh", background: "#0f172a", color: "#f1f5f9" }}>
+      {/* Header */}
+      <div style={{ borderBottom: "1px solid #1e293b", padding: "16px 28px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#f97316" }} />
+          <span style={{ fontWeight: 600, fontSize: 15, letterSpacing: "-0.01em" }}>Demo Prep</span>
+          {selectedProduct && <>
+            <span style={{ color: "#334155", margin: "0 2px" }}>›</span>
+            <span style={{ color: "#94a3b8", fontSize: 14 }}>{selectedProduct}</span>
+          </>}
+          {inputMode && <>
+            <span style={{ color: "#334155", margin: "0 2px" }}>›</span>
+            <span style={{ color: "#475569", fontSize: 13 }}>{inputMode === "winn" ? "Winn.ai summary" : "Manual"}</span>
+          </>}
+        </div>
+        {step !== "product" && (
+          <button onClick={reset} style={{ background: "none", border: "none", color: "#475569", fontSize: 13, cursor: "pointer", padding: "4px 8px", borderRadius: 6 }}>
+            ← Start over
+          </button>
+        )}
+      </div>
+
+      <div style={{ maxWidth: 740, margin: "0 auto", padding: "32px 24px" }}>
+
+        {/* ── Step 1: Product ── */}
+        {step === "product" && (
+          <div>
+            <div style={{ marginBottom: 32 }}>
+              <h1 style={{ fontSize: 26, fontWeight: 700, margin: "0 0 8px", letterSpacing: "-0.03em" }}>What are you demoing?</h1>
+              <p style={{ color: "#64748b", margin: 0, fontSize: 14, lineHeight: 1.6 }}>
+                Enter client discovery info and get a focused brief on what to emphasise.
+              </p>
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              {PRODUCTS.map((p) => (
+                <button key={p} onClick={() => handleProductSelect(p)} style={{
+                  background: "#1e293b", border: "1px solid #334155", borderRadius: 10,
+                  padding: "18px 22px", color: "#f1f5f9", cursor: "pointer", textAlign: "left",
+                  fontSize: 15, fontWeight: 500, display: "flex", alignItems: "center", justifyContent: "space-between",
+                }}
+                  onMouseEnter={(e) => e.currentTarget.style.borderColor = "#f97316"}
+                  onMouseLeave={(e) => e.currentTarget.style.borderColor = "#334155"}
+                >
+                  <span>{p}</span>
+                  <span style={{ color: "#475569", fontSize: 18 }}>→</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* ── Step 2: Mode ── */}
+        {step === "mode" && (
+          <div>
+            <div style={{ marginBottom: 28 }}>
+              <h2 style={{ fontSize: 22, fontWeight: 700, margin: "0 0 8px", letterSpacing: "-0.02em" }}>How do you want to add client info?</h2>
+              <p style={{ color: "#64748b", margin: 0, fontSize: 14 }}>Paste a Winn.ai summary, or fill in the fields manually.</p>
+            </div>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              {/* Winn option */}
+              <button onClick={() => handleModeSelect("winn")} style={{
+                background: "#1e293b", border: "1px solid #334155", borderRadius: 10,
+                padding: "20px 22px", color: "#f1f5f9", cursor: "pointer", textAlign: "left",
+                display: "flex", alignItems: "flex-start", gap: 16,
+              }}
+                onMouseEnter={(e) => e.currentTarget.style.borderColor = "#f97316"}
+                onMouseLeave={(e) => e.currentTarget.style.borderColor = "#334155"}
+              >
+                <div style={{ fontSize: 22, marginTop: 1 }}>📋</div>
+                <div>
+                  <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 4 }}>Paste Winn.ai summary</div>
+                  <div style={{ color: "#64748b", fontSize: 13, lineHeight: 1.5 }}>Drop in the meeting summary straight from Zoom + Winn.ai. Fast, no typing required.</div>
+                </div>
+              </button>
+
+              {/* Manual option */}
+              <button onClick={() => handleModeSelect("manual")} style={{
+                background: "#1e293b", border: "1px solid #334155", borderRadius: 10,
+                padding: "20px 22px", color: "#f1f5f9", cursor: "pointer", textAlign: "left",
+                display: "flex", alignItems: "flex-start", gap: 16,
+              }}
+                onMouseEnter={(e) => e.currentTarget.style.borderColor = "#f97316"}
+                onMouseLeave={(e) => e.currentTarget.style.borderColor = "#334155"}
+              >
+                <div style={{ fontSize: 22, marginTop: 1 }}>✏️</div>
+                <div>
+                  <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 4 }}>Fill in manually</div>
+                  <div style={{ color: "#64748b", fontSize: 13, lineHeight: 1.5 }}>Answer guided discovery questions field by field. Good for pre-call prep or when Winn isn't available.</div>
+                </div>
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ── Step 3a: Winn paste ── */}
+        {step === "winn" && (
+          <div>
+            <div style={{ marginBottom: 20 }}>
+              <h2 style={{ fontSize: 22, fontWeight: 700, margin: "0 0 6px", letterSpacing: "-0.02em" }}>Paste your Winn.ai summary</h2>
+              <p style={{ color: "#64748b", margin: 0, fontSize: 13, lineHeight: 1.6 }}>
+                Copy the full meeting summary from Winn and drop it below. The AI will extract what it needs.
+              </p>
+            </div>
+
+            <textarea
+              value={winnSummary}
+              onChange={(e) => setWinnSummary(e.target.value)}
+              placeholder={"Paste your Winn.ai meeting summary here...\n\ne.g. – Client currently uses spreadsheets for ticketing, ~30 customers...\n    – Main pain points: contract visibility, manual billing...\n    – Interested in automation and AI triage..."}
+              rows={16}
+              style={{
+                width: "100%", background: "#1e293b", border: "1px solid #334155",
+                borderRadius: 8, padding: "14px", color: "#f1f5f9", fontSize: 13.5,
+                fontFamily: "inherit", lineHeight: 1.6, boxSizing: "border-box",
+                resize: "vertical", outline: "none",
+              }}
+              onFocus={(e) => e.target.style.borderColor = "#f97316"}
+              onBlur={(e) => e.target.style.borderColor = "#334155"}
+            />
+
+            {error && (
+              <div style={{ marginTop: 12, background: "#450a0a", border: "1px solid #991b1b", borderRadius: 8, padding: "10px 14px", color: "#fca5a5", fontSize: 13 }}>
+                {error}
+              </div>
+            )}
+
+            <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
+              <button onClick={() => setStep("mode")} style={{ background: "#1e293b", border: "1px solid #334155", borderRadius: 8, padding: "12px 20px", color: "#64748b", fontSize: 14, cursor: "pointer" }}>
+                ←
+              </button>
+              <button onClick={handleSubmit} style={{
+                flex: 1, background: "#f97316", border: "none", borderRadius: 9,
+                padding: "13px 0", color: "#fff", fontSize: 15, fontWeight: 600, cursor: "pointer",
+              }}>
+                Generate demo brief →
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ── Step 3b: Manual inputs ── */}
+        {step === "inputs" && (
+          <div>
+            <div style={{ marginBottom: 24 }}>
+              <h2 style={{ fontSize: 22, fontWeight: 700, margin: "0 0 6px", letterSpacing: "-0.02em" }}>What did you discover?</h2>
+              <p style={{ color: "#64748b", margin: 0, fontSize: 13, lineHeight: 1.6 }}>
+                Fill in what you know. Empty fields are fine — skip anything you don't have.
+              </p>
+            </div>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+              {DISCOVERY_FIELDS[selectedProduct].map((field) => (
+                <div key={field.key}>
+                  <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#94a3b8", marginBottom: 5, textTransform: "uppercase", letterSpacing: "0.07em" }}>
+                    {field.label}
+                  </label>
+                  <textarea
+                    value={formData[field.key] || ""}
+                    onChange={(e) => handleInputChange(field.key, e.target.value)}
+                    placeholder={field.placeholder}
+                    rows={2}
+                    style={{
+                      width: "100%", background: "#1e293b", border: "1px solid #334155",
+                      borderRadius: 8, padding: "10px 12px", color: "#f1f5f9", fontSize: 13.5,
+                      resize: "vertical", fontFamily: "inherit", lineHeight: 1.5,
+                      boxSizing: "border-box", outline: "none",
+                    }}
+                    onFocus={(e) => e.target.style.borderColor = "#f97316"}
+                    onBlur={(e) => e.target.style.borderColor = "#334155"}
+                  />
+                </div>
+              ))}
+            </div>
+
+            {error && (
+              <div style={{ marginTop: 16, background: "#450a0a", border: "1px solid #991b1b", borderRadius: 8, padding: "10px 14px", color: "#fca5a5", fontSize: 13 }}>
+                {error}
+              </div>
+            )}
+
+            <div style={{ display: "flex", gap: 10, marginTop: 22 }}>
+              <button onClick={() => setStep("mode")} style={{ background: "#1e293b", border: "1px solid #334155", borderRadius: 8, padding: "12px 20px", color: "#64748b", fontSize: 14, cursor: "pointer" }}>
+                ←
+              </button>
+              <button onClick={handleSubmit} style={{
+                flex: 1, background: "#f97316", border: "none", borderRadius: 9,
+                padding: "13px 0", color: "#fff", fontSize: 15, fontWeight: 600, cursor: "pointer",
+              }}>
+                Generate demo brief →
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ── Loading ── */}
+        {step === "loading" && (
+          <div style={{ textAlign: "center", padding: "80px 0" }}>
+            <div style={{
+              width: 40, height: 40, borderRadius: "50%",
+              border: "3px solid #1e293b", borderTop: "3px solid #f97316",
+              margin: "0 auto 20px", animation: "spin 0.8s linear infinite",
+            }} />
+            <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+            <p style={{ color: "#64748b", fontSize: 14 }}>Building your brief…</p>
+          </div>
+        )}
+
+        {/* ── Results ── */}
+        {step === "results" && results && (
+          <div>
+            {/* Source pill */}
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 20 }}>
+              <span style={{ fontSize: 11, fontWeight: 700, color: inputMode === "winn" ? "#a78bfa" : "#60a5fa", background: inputMode === "winn" ? "#1e1b4b" : "#0f2744", border: `1px solid ${inputMode === "winn" ? "#4c1d95" : "#1d4ed8"}`, borderRadius: 20, padding: "3px 10px", letterSpacing: "0.05em" }}>
+                {inputMode === "winn" ? "📋 From Winn.ai" : "✏️ Manual entry"} · {selectedProduct}
+              </span>
+            </div>
+
+            {/* Headline */}
+            <div style={{ ...card, marginBottom: 16 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: "#f97316", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 6 }}>Client snapshot</div>
+              <p style={{ margin: 0, fontSize: 15, color: "#e2e8f0", lineHeight: 1.6 }}>{results.headline}</p>
+            </div>
+
+            {/* Opening angle */}
+            {results.openingAngle && (
+              <div style={{ background: "#0f2744", border: "1px solid #1d4ed8", borderRadius: 10, padding: "16px 20px", marginBottom: 20 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "#60a5fa", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 6 }}>Opening angle</div>
+                <p style={{ margin: 0, fontSize: 14, color: "#bfdbfe", lineHeight: 1.6, fontStyle: "italic" }}>"{results.openingAngle}"</p>
+              </div>
+            )}
+
+            {/* Focus areas */}
+            <h3 style={{ fontSize: 11, fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.08em", margin: "0 0 12px" }}>
+              Demo focus areas
+            </h3>
+            <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 20 }}>
+              {results.focusAreas?.map((area, i) => {
+                const cfg = PRIORITY_CONFIG[area.priority] || PRIORITY_CONFIG.MEDIUM;
+                return (
+                  <div key={i} style={{ background: cfg.bg, border: `1px solid ${cfg.border}`, borderRadius: 10, padding: "14px 16px" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
+                      <div style={{ width: 7, height: 7, borderRadius: "50%", background: cfg.dot, flexShrink: 0 }} />
+                      <span style={{ fontWeight: 600, fontSize: 14, color: "#1e293b", flex: 1 }}>{area.section}</span>
+                      <span style={{ fontSize: 11, fontWeight: 700, color: cfg.color, background: "white", border: `1px solid ${cfg.border}`, borderRadius: 20, padding: "2px 9px", letterSpacing: "0.04em" }}>
+                        {cfg.label}
+                      </span>
+                    </div>
+                    <p style={{ margin: "0 0 8px 17px", fontSize: 12.5, color: "#475569", fontStyle: "italic", lineHeight: 1.5 }}>
+                      {area.whyItMatters}
+                    </p>
+                    <ul style={{ margin: "0 0 0 17px", padding: 0, listStyle: "none" }}>
+                      {area.talkingPoints?.map((pt, j) => (
+                        <li key={j} style={{ fontSize: 13, color: "#374151", lineHeight: 1.5, marginBottom: 4, paddingLeft: 12, position: "relative" }}>
+                          <span style={{ position: "absolute", left: 0, color: cfg.dot }}>•</span>
+                          {pt}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Watch out */}
+            {results.watchOut?.length > 0 && (
+              <div style={{ background: "#1c1917", border: "1px solid #44403c", borderRadius: 10, padding: "16px 20px", marginBottom: 20 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "#f59e0b", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 10 }}>⚠ Watch out</div>
+                <ul style={{ margin: 0, padding: 0, listStyle: "none" }}>
+                  {results.watchOut.map((item, i) => (
+                    <li key={i} style={{ fontSize: 13, color: "#d6d3d1", lineHeight: 1.6, marginBottom: 6, paddingLeft: 14, position: "relative" }}>
+                      <span style={{ position: "absolute", left: 0, color: "#f59e0b" }}>›</span>
+                      {item}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {/* Actions */}
+            <div style={{ display: "flex", gap: 10 }}>
+              <button onClick={backToInput} style={{ flex: 1, background: "#1e293b", border: "1px solid #334155", borderRadius: 8, padding: "12px 0", color: "#94a3b8", fontSize: 14, cursor: "pointer", fontWeight: 500 }}>
+                ← Edit inputs
+              </button>
+              <button onClick={reset} style={{ flex: 1, background: "#f97316", border: "none", borderRadius: 8, padding: "12px 0", color: "#fff", fontSize: 14, cursor: "pointer", fontWeight: 600 }}>
+                New demo →
+              </button>
+            </div>
+          </div>
+        )}
+
+      </div>
+    </div>
+  );
+}
